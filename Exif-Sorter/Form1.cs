@@ -175,6 +175,13 @@ namespace Exif_Sorter
 
         private void treeViewImages_NodeMouseDoubleClick(object sender, TreeNodeMouseClickEventArgs e)
         {
+            // check if images were copied and list needs to be cleared
+            if (buttonMove.Enabled == false)
+            {
+                DataTable dataTable = dataGridView1.DataSource as DataTable;
+                dataTable.Rows.Clear();
+                buttonMove.Enabled = true;
+            }
 
             if (e.Node?.Nodes.Count > 0)
             {
@@ -324,6 +331,7 @@ namespace Exif_Sorter
             // dataGridView1.DataSource = dataTable;
             // dataTable.Dispose();
             labelStatusleisteDataGridView.Text = $"Keine Bilder ausgewählt";
+            buttonMove.Enabled = true;
         }
 
         private void dataGridView1_MouseClick(object sender, MouseEventArgs e)
@@ -431,11 +439,13 @@ namespace Exif_Sorter
 
         private void changeZielordnernameByTextbox()
         {
-            foreach (DataGridViewRow imageEntryRow in dataGridView1.Rows)
+            DataTable dataTable = dataGridView1.DataSource as DataTable;
+
+            foreach (DataRow imageEntryRow in dataTable.Rows)
             {
                 try
                 {
-                    imageEntryRow.Cells["NeuerZielordner"].Value = $"{Path.Combine(targetPathName, textBoxZielordnername.Text)}";
+                    imageEntryRow["NeuerZielordner"] = $"{Path.Combine(targetPathName, textBoxZielordnername.Text)}";
                 }
                 catch { }
             }
@@ -443,6 +453,7 @@ namespace Exif_Sorter
 
         private void buttonMove_Click(object sender, EventArgs e)
         {
+            buttonMove.Enabled = false;
             DataTable dataTable = dataGridView1.DataSource as DataTable;
             try
             {
@@ -457,7 +468,7 @@ namespace Exif_Sorter
                     }
 
                     string fileNameAndPath = Path.Combine(dataTable.Rows[i]["NeuerZielordner"].ToString(), fileName);
-                    //File.Copy(dataTable.Rows[i]["Dateiname"].ToString(), Path.Combine(dataTable.Rows[i]["NeuerZielordner"].ToString(), fileName), false);
+                    File.Copy(dataTable.Rows[i]["Dateiname"].ToString(), Path.Combine(dataTable.Rows[i]["NeuerZielordner"].ToString(), fileName), false);
 
                     // TODO - delete copied images from treeview
                     nodesToBeDeletedAfterCopy.AddRange(treeViewImages.Nodes.Find(dataTable.Rows[i]["Dateiname"].ToString(), true));
