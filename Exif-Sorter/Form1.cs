@@ -1,165 +1,202 @@
+using System.ComponentModel;
 using System.Data;
 using System.Drawing.Imaging;
 using System.Globalization;
+using System.Runtime.Serialization.Formatters.Binary;
 using System.Text;
+using System.Xml;
 using System.Xml.Linq;
+using System.Xml.Serialization;
+using Exif_Sorter.Models;
 
 namespace Exif_Sorter
 {
     public partial class Form1 : Form
     {
         // source folder of images
-        string sourcePathName = @"Z:\Bilder\S9\OpenCamera";
+        string sourcePathName = @"Z:\Bilder\S9\";
 
         // target folder of images
         string targetPathName = @"C:\Temp\Bilder_Sortiert";
 
+        // global dataTable with current state of treeview
+        DataTable treeviewDataTable = new DataTable();
+
+        // list of opened folders
+        List<string> _openFolders;
+
         public Form1()
         {
             InitializeComponent();
+            InitializeBackgroundWorker();
             labelSourcePathName.Text = sourcePathName;
+
+            // Backgroundworker process for loading images
+            backgroundWorkerGetImages.WorkerReportsProgress = true;
+            backgroundWorkerGetImages.WorkerSupportsCancellation = true;
 
         }
 
-        private void button1_Click(object sender, EventArgs e)
+        private void buttonRefreshImages_Click(object sender, EventArgs e)
         {
-            // disable button
-            button1.Enabled = false;
-
-            // Do performance measure for populating dataTable
-            var watch = System.Diagnostics.Stopwatch.StartNew();
-
-            // Performance issues in DataGridView
-            dataGridView1.RowHeadersWidthSizeMode = DataGridViewRowHeadersWidthSizeMode.EnableResizing;
-            // or even better, use .DisableResizing. Most time consuming enum is DataGridViewRowHeadersWidthSizeMode.AutoSizeToAllHeaders
-
-            // set it to false if not needed
-            dataGridView1.RowHeadersVisible = false;
-
-            // Array of imagefiles
-            string[] imageFiles;
-
-            // ID-Code for ExifDT
-            Int32 imageIndex = 36867;
-
-            // datatable for DataGridView
-            DataTable dataTable = new DataTable();
-            dataTable.Columns.Add("Elternordner");
-            dataTable.Columns.Add("Dateiname");
-            dataTable.Columns.Add("Aufnahmedatum");
-            dataTable.Columns.Add("Zielordner");
-            dataTable.Columns.Add("ZielordnerName");
-            dataTable.Columns.Add("NeuerZielordner");
-
-            // Put images into treeview - order
-            TreeNode topNode = new TreeNode(sourcePathName);
-            List<TreeNode> lstAufnahmedatum = new List<TreeNode>();
-            List<TreeNode> lstImages = new List<TreeNode>();
-
-            // list imagefiles of pathName
-            if (Directory.Exists(sourcePathName))
+            // changed to worker and helper function
+            if (!backgroundWorkerGetImages.IsBusy)
             {
-                // TODO - respect subfolders
-                imageFiles = Directory.GetFiles(sourcePathName);
-            }
-            else
-            {
-                button1.Enabled = true;
-                MessageBox.Show($"Folder {sourcePathName} not found.");
-                throw new Exception($"Folder {sourcePathName} not found.", new DirectoryNotFoundException());
+                // disable button
+                button1.Enabled = false;
+
+                // Performance issues in DataGridView
+                dataGridView1.RowHeadersWidthSizeMode = DataGridViewRowHeadersWidthSizeMode.EnableResizing;
+                // or even better, use .DisableResizing. Most time consuming enum is DataGridViewRowHeadersWidthSizeMode.AutoSizeToAllHeaders
+
+                // set it to false if not needed
+                dataGridView1.RowHeadersVisible = false;
+
+                backgroundWorkerGetImages.RunWorkerAsync();
             }
 
-            // Now we know how many images to process - set progressbar
-            progressBarVerarbeitung.Minimum = 1;
-            progressBarVerarbeitung.Maximum = imageFiles.Length;
-            progressBarVerarbeitung.Value = 1;
-            progressBarVerarbeitung.Step = 1;
+            //// disable button
+            //button1.Enabled = false;
 
-            if (imageFiles.Length > 0)
-            {
-                // Globally define Encoding
-                ASCIIEncoding enc = new ASCIIEncoding();
+            //// Do performance measure for populating dataTable
+            //var watch = System.Diagnostics.Stopwatch.StartNew();
 
-                foreach (var imageFile in imageFiles)
-                {
-                    //FileInfo fileInfo = new FileInfo(imageFile);
-                    if (imageFile.ToLower().EndsWith(".jpg") || imageFile.ToLower().EndsWith(".jpeg"))
-                    {
-                        Image image = Image.FromFile(imageFile);
-                        PropertyItem propertyItem = image.GetPropertyItem(imageIndex);
-                        string dateTakenText = enc.GetString(propertyItem.Value, 0, propertyItem.Len - 1);
-                        if (!String.IsNullOrEmpty(dateTakenText))
-                        {
-                            DateTime dateTaken;
-                            if (DateTime.TryParseExact(dateTakenText, "yyyy:MM:dd HH:mm:ss",
-                                CultureInfo.CurrentCulture, DateTimeStyles.None, out dateTaken))
-                            {
-                                // write to grid
-                                DataRow imageEntry = dataTable.NewRow();
-                                imageEntry["Elternordner"] = sourcePathName;
-                                imageEntry["Dateiname"] = imageFile;
-                                imageEntry["Aufnahmedatum"] = dateTaken;
-                                imageEntry["Zielordner"] = Path.Combine(targetPathName, dateTaken.Date.ToString("yyyy-MM-dd"));
-                                dataTable.Rows.Add(imageEntry);
-                                image.Dispose();
+            //// Performance issues in DataGridView
+            //dataGridView1.RowHeadersWidthSizeMode = DataGridViewRowHeadersWidthSizeMode.EnableResizing;
+            //// or even better, use .DisableResizing. Most time consuming enum is DataGridViewRowHeadersWidthSizeMode.AutoSizeToAllHeaders
 
-                                labelAnzahl.Text = $"Anzahl verarbeiteter Bilder: {dataTable.Rows.Count} von {imageFiles.Length}";
-                                progressBarVerarbeitung.PerformStep();
-                                if ((dataTable.Rows.Count % 5) == 0)
-                                {
-                                    Refresh();
-                                }
-                            }
-                        }
-                    }
-                }
+            //// set it to false if not needed
+            //dataGridView1.RowHeadersVisible = false;
 
-                // sort DataTable based on Aufnahmedatum
-                dataTable.DefaultView.Sort = "Aufnahmedatum";
+            //// Array of imagefiles
+            //string[] imageFiles;
 
-                //// Iterate dataSource for treeview
-                treeViewImages.Nodes.Clear();
-                foreach (DataRow row in dataTable.Rows)
-                {
-                    // Add top level element
-                    if (!treeViewImages.Nodes.ContainsKey(row["Zielordner"].ToString()))
-                    {
-                        TreeNode currentNode = new TreeNode();
-                        currentNode.Name = row["Zielordner"].ToString();
-                        currentNode.Text = row["Zielordner"].ToString();
-                        treeViewImages.Nodes.Add(currentNode);
-                    }
+            //// ID-Code for ExifDT
+            //Int32 imageIndex = 36867;
 
-                    // add current image as child
-                    TreeNode childNode = new TreeNode();
-                    childNode.Name = row["Dateiname"].ToString();
-                    childNode.Text = row["Dateiname"].ToString();
+            //// datatable for DataGridView
+            //DataTable dataTable = new DataTable();
+            //dataTable.Columns.Add("Elternordner");
+            //dataTable.Columns.Add("Dateiname");
+            //dataTable.Columns.Add("Aufnahmedatum");
+            //dataTable.Columns.Add("Zielordner");
+            //dataTable.Columns.Add("ZielordnerName");
+            //dataTable.Columns.Add("NeuerZielordner");
 
-                    // tags for properties needed in datagridview
-                    ImageEntryObject imageEntryObject = new ImageEntryObject(row["Aufnahmedatum"].ToString(),
-                        row["Dateiname"].ToString(),
-                        row["Elternordner"].ToString(), "", "");
-                    childNode.Tag = imageEntryObject;
+            //// Put images into treeview - order
+            //TreeNode topNode = new TreeNode(sourcePathName);
+            //List<TreeNode> lstAufnahmedatum = new List<TreeNode>();
+            //List<TreeNode> lstImages = new List<TreeNode>();
 
-                    treeViewImages.Nodes[row["Zielordner"].ToString()].Nodes.Add(childNode);
+            //// list imagefiles of pathName
+            //if (Directory.Exists(sourcePathName))
+            //{
+            //    // TODO - respect subfolders
+            //    imageFiles = Directory.GetFiles(sourcePathName);
+            //}
+            //else
+            //{
+            //    button1.Enabled = true;
+            //    MessageBox.Show($"Folder {sourcePathName} not found.");
+            //    throw new Exception($"Folder {sourcePathName} not found.", new DirectoryNotFoundException());
+            //}
 
-                    labelStatusTreeview.Text = $"{treeViewImages.Nodes.Count} Aufnahmedaten mit {dataTable.Rows.Count} Bildern";
-                }
-            }
-            else
-            {
-                MessageBox.Show($"No files to process found in {sourcePathName}");
-                button1.Enabled = true;
-                throw new Exception($"No files to process found in {sourcePathName}", new Exception());
-            }
+            //// Now we know how many images to process - set progressbar
+            //progressBarVerarbeitung.Minimum = 1;
+            //progressBarVerarbeitung.Maximum = imageFiles.Length;
+            //progressBarVerarbeitung.Value = 1;
+            //progressBarVerarbeitung.Step = 1;
 
-            watch.Stop();
-            var elapsedMs = watch.ElapsedMilliseconds;
-            labelBenoetigteZeit.Text = $"Benötigte Zeit: {(elapsedMs / 1000).ToString()}s";
-            labelBenoetigteZeit.Visible = true;
-            // dataGridView1.DataSource = dataTable;
-            treeViewImages.CheckBoxes = true;
-            button1.Enabled = true;
+            //if (imageFiles.Length > 0)
+            //{
+            //    // Globally define Encoding
+            //    ASCIIEncoding enc = new ASCIIEncoding();
+
+            //    foreach (var imageFile in imageFiles)
+            //    {
+            //        //FileInfo fileInfo = new FileInfo(imageFile);
+            //        if (imageFile.ToLower().EndsWith(".jpg") || imageFile.ToLower().EndsWith(".jpeg"))
+            //        {
+            //            Image image = Image.FromFile(imageFile);
+            //            PropertyItem propertyItem = image.GetPropertyItem(imageIndex);
+            //            string dateTakenText = enc.GetString(propertyItem.Value, 0, propertyItem.Len - 1);
+            //            if (!String.IsNullOrEmpty(dateTakenText))
+            //            {
+            //                DateTime dateTaken;
+            //                if (DateTime.TryParseExact(dateTakenText, "yyyy:MM:dd HH:mm:ss",
+            //                    CultureInfo.CurrentCulture, DateTimeStyles.None, out dateTaken))
+            //                {
+            //                    // write to grid
+            //                    DataRow imageEntry = dataTable.NewRow();
+            //                    imageEntry["Elternordner"] = sourcePathName;
+            //                    imageEntry["Dateiname"] = imageFile;
+            //                    imageEntry["Aufnahmedatum"] = dateTaken;
+            //                    imageEntry["Zielordner"] = Path.Combine(targetPathName, dateTaken.Date.ToString("yyyy-MM-dd"));
+            //                    dataTable.Rows.Add(imageEntry);
+            //                    image.Dispose();
+
+            //                    progressBarVerarbeitung.PerformStep();
+            //                    if ((dataTable.Rows.Count % 5) == 0)
+            //                    {
+            //                        // Do performance measure for populating dataTable
+            //                        var elapsedTimeSinceStart = watch.Elapsed;
+            //                        var timePerPicture = (elapsedTimeSinceStart.TotalMilliseconds / 1000) / dataTable.Rows.Count;
+            //                        var timeRemaining = timePerPicture * (imageFiles.Length - dataTable.Rows.Count);
+
+            //                        labelAnzahl.Text = $"Anzahl verarbeiteter Bilder: {dataTable.Rows.Count} von {imageFiles.Length} - geschätzte verbleibende Zeit: {Math.Round(timeRemaining, 0)}";
+            //                        Refresh();
+            //                    }
+            //                }
+            //            }
+            //        }
+            //    }
+
+            //    // sort DataTable based on Aufnahmedatum
+            //    dataTable.DefaultView.Sort = "Aufnahmedatum";
+
+            //    //// Iterate dataSource for treeview
+            //    treeViewImages.Nodes.Clear();
+            //    foreach (DataRow row in dataTable.Rows)
+            //    {
+            //        // Add top level element
+            //        if (!treeViewImages.Nodes.ContainsKey(row["Zielordner"].ToString()))
+            //        {
+            //            TreeNode currentNode = new TreeNode();
+            //            currentNode.Name = row["Zielordner"].ToString();
+            //            currentNode.Text = row["Zielordner"].ToString();
+            //            treeViewImages.Nodes.Add(currentNode);
+            //        }
+
+            //        // add current image as child
+            //        TreeNode childNode = new TreeNode();
+            //        childNode.Name = row["Dateiname"].ToString();
+            //        childNode.Text = row["Dateiname"].ToString();
+
+            //        // tags for properties needed in datagridview
+            //        ImageEntryObject imageEntryObject = new ImageEntryObject(row["Aufnahmedatum"].ToString(),
+            //            row["Dateiname"].ToString(),
+            //            row["Elternordner"].ToString(), "", "");
+            //        childNode.Tag = imageEntryObject;
+
+            //        treeViewImages.Nodes[row["Zielordner"].ToString()].Nodes.Add(childNode);
+
+            //        labelStatusTreeview.Text = $"{treeViewImages.Nodes.Count} Aufnahmedaten mit {dataTable.Rows.Count} Bildern";
+            //    }
+            //}
+            //else
+            //{
+            //    MessageBox.Show($"No files to process found in {sourcePathName}");
+            //    button1.Enabled = true;
+            //    throw new Exception($"No files to process found in {sourcePathName}", new Exception());
+            //}
+
+            //watch.Stop();
+            //var elapsedMs = watch.ElapsedMilliseconds;
+            //labelBenoetigteZeit.Text = $"Benötigte Zeit: {(elapsedMs / 1000).ToString()}s";
+            //labelBenoetigteZeit.Visible = true;
+            //// dataGridView1.DataSource = dataTable;
+            //treeViewImages.CheckBoxes = true;
+            //button1.Enabled = true;
         }
 
         private void treeViewImages_AfterCheck(object sender, TreeViewEventArgs e)
@@ -317,11 +354,110 @@ namespace Exif_Sorter
             }
         }
 
-        private void ordnerÖffnenToolStripMenuItem_Click(object sender, EventArgs e)
+        private void ordnerOeffnenToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            folderBrowserDialog1.ShowDialog();
-            sourcePathName = folderBrowserDialog1.SelectedPath;
-            labelSourcePathName.Text = sourcePathName;
+            ////folderBrowserDialog1.ShowDialog();
+            ////sourcePathName = folderBrowserDialog1.SelectedPath;
+            //openFileDialogTreeviewState.Multiselect = true;
+            //openFileDialogTreeviewState.ShowDialog();
+            ////string[] files;
+            //openFolders = openFileDialogTreeviewState.FileNames;
+
+            ////labelSourcePathName.Text = sourcePathName;
+            ///
+            FolderBrowseDialogMultiselect folderBrowseDialogMultiselect = new FolderBrowseDialogMultiselect(sourcePathName);
+            // folderBrowseDialogMultiselect.setFolder(sourcePathName);
+            folderBrowseDialogMultiselect.ShowDialog();
+            _openFolders = folderBrowseDialogMultiselect._folders;
+            folderBrowseDialogMultiselect.Close();
+
+        }
+
+        private void treeviewSpeichernToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            saveFileDialogTreeviewState.ShowDialog();
+            
+            string saveFilename = saveFileDialogTreeviewState.FileName;
+
+            //DataSet dataSet = new DataSet();
+            //dataSet.Tables.Add(treeviewDataTable);
+            //dataSet.WriteXml(saveFilename);
+            treeviewDataTable.WriteXml(saveFilename);
+
+            //TextWriter writer = new StreamWriter(saveFilename);
+            //try
+            //{
+            //    //using (Stream file = File.Open(saveFilename, FileMode.Create))
+            //    //{
+            //    //    BinaryFormatter bf = new BinaryFormatter();
+            //    //    bf.Serialize(file, treeViewImages.Nodes.Cast<TreeNode>().ToList());
+            //    //}
+            //    //string xmlSerialization = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
+            //    writer.Write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<root>\n");
+            //    // iterate root nodes
+            //    foreach (TreeNode node in treeViewImages.Nodes)
+            //    {
+            //        serializeTreeNodeInclTags(node, 1, writer);
+            //    }
+            //    writer.Write("</root>");
+                
+            //}
+            //catch(Exception ex)
+            //{
+            //    MessageBox.Show(ex.Message);
+            //}
+            //finally
+            //{
+            //    writer.Close();
+            //}
+            
+        }
+
+        private void treeviewLadenToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            openFileDialogTreeviewState.ShowDialog();
+            string openFilename = openFileDialogTreeviewState.FileName;
+
+            //DataSet dataSet = new DataSet();
+
+            //dataSet.ReadXml(openFilename);
+            //treeviewDataTable = dataSet.Tables[0];
+            treeviewDataTable.ReadXml(openFilename);
+            populateTreeViewByDataTable(treeviewDataTable);
+
+            //// Copied from Stackoverflow - to be customized
+            //XmlDataDocument xmldoc = new XmlDataDocument();
+            //XmlNodeList xmlnodeList;
+            //FileStream fs = new FileStream(openFilename, FileMode.Open, FileAccess.Read);
+            //xmldoc.Load(fs);
+            //xmlnodeList = xmldoc.ChildNodes[1].ChildNodes;
+
+            //treeViewImages.Nodes.Clear();
+            //foreach (var item in xmlnodeList)
+            //{
+            //    var test = item;
+            //    //TreeNode newNode = new TreeNode();
+            //    //treeViewImages.Nodes.Add(newNode);
+            //}
+            
+            
+            //List<TreeNodeWithTags> listOfNodes = new List<TreeNodeWithTags>();
+
+            //XmlSerializer serializer = new XmlSerializer(typeof(TreeNodeWithTags));
+
+            //using (XmlReader reader = new XmlTextReader(openFilename))
+            //{
+            //    var listOfNodes = serializer.Deserialize(reader);
+            //}
+
+            //using (Stream file = File.Open(openFilename, FileMode.Open))
+            //{
+            //    BinaryFormatter bf = new BinaryFormatter();
+            //    object obj = bf.Deserialize(file);
+
+            //    TreeNode[] nodeList = (obj as IEnumerable<TreeNode>).ToArray();
+            //    treeViewImages.Nodes.AddRange(nodeList);
+            //}
         }
 
         private void buttonDeleteSelection_Click(object sender, EventArgs e)
@@ -405,25 +541,6 @@ namespace Exif_Sorter
             labelStatusleisteDataGridView.Text = $"Die Auswahl enthält {dataTable.Rows.Count} Bilder";
         }
 
-        private class ImageEntryObject
-        {
-            public ImageEntryObject(string aufnahmedatum, string dateiname, string elternordner, string zielordner, string neuerZielordner)
-            {
-                Aufnahmedatum = aufnahmedatum;
-                Dateiname = dateiname;
-                Elternordner = elternordner;
-                Zielordner = zielordner;
-                NeuerZielordner = neuerZielordner;
-            }
-
-            public string Aufnahmedatum { get; set; }
-            public string Dateiname { get; set; }
-            public string Elternordner { get; set; }
-            public string Zielordner { get; set; }
-            public string NeuerZielordner { get; set; }
-
-        }
-
         private void buttonZielordnername_Click(object sender, EventArgs e)
         {
             changeZielordnernameByTextbox();
@@ -504,5 +621,297 @@ namespace Exif_Sorter
                 throw new Exception(ex.Message);
             }
         }
+
+        #region internal functions
+        internal void setFoldersFromList(List<string> folders)
+        {
+            _openFolders = folders;
+        }
+
+        #endregion
+
+        #region HelperFunctions
+
+        private DataTable getImages()
+        {
+            // Do performance measure for populating dataTable
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+
+            // Array of imagefiles
+            string[] imageFiles;
+            List<string> imagesFromFolders = new List<string>();
+
+            // ID-Code for ExifDT
+            Int32 imageIndex = 36867;
+
+            // datatable for DataGridView
+            DataTable dataTable = new DataTable();
+            dataTable.Columns.Add("Elternordner");
+            dataTable.Columns.Add("Dateiname");
+            dataTable.Columns.Add("Aufnahmedatum");
+            dataTable.Columns.Add("Zielordner");
+            dataTable.Columns.Add("ZielordnerName");
+            dataTable.Columns.Add("NeuerZielordner");
+
+            // Put images into treeview - order
+            //TreeNode topNode = new TreeNode(sourcePathName);
+            //List<TreeNode> lstAufnahmedatum = new List<TreeNode>();
+            //List<TreeNode> lstImages = new List<TreeNode>();
+
+
+            // load files for selected folders
+            if (_openFolders.Count > 0) {
+                foreach (string folder in _openFolders)
+                {
+                    // list imagefiles of pathName
+                    if (Directory.Exists(folder))
+                    {
+                        // TODO - respect subfolders
+                        //imageFiles = Directory.GetFiles(folder);
+                        
+                        imagesFromFolders.AddRange(Directory.GetFiles(folder, "*", SearchOption.AllDirectories).ToList());
+                    }
+                    else
+                    {
+                        // button1.Enabled = true;
+                        MessageBox.Show($"Folder {folder} not found.");
+                        throw new Exception($"Folder {folder} not found.", new DirectoryNotFoundException());
+                    }
+                }
+            }
+            // Now we know how many images to process - set progressbar
+            //progressBarVerarbeitung.Minimum = 1;
+            //progressBarVerarbeitung.Maximum = imageFiles.Length;
+            //progressBarVerarbeitung.Value = 1;
+            //progressBarVerarbeitung.Step = 1;
+
+            //if (imageFiles?.Length > 0)
+            if (imagesFromFolders.Count > 0)
+            {
+                // Globally define Encoding
+                ASCIIEncoding enc = new ASCIIEncoding();
+
+                foreach (var imageFile in imagesFromFolders)
+                {
+                    //FileInfo fileInfo = new FileInfo(imageFile);
+                    if (imageFile.ToLower().EndsWith(".jpg") || imageFile.ToLower().EndsWith(".jpeg"))
+                    {
+                        Image image = Image.FromFile(imageFile);
+                        PropertyItem propertyItem = image.GetPropertyItem(imageIndex);
+                        string dateTakenText = enc.GetString(propertyItem.Value, 0, propertyItem.Len - 1);
+                        if (!String.IsNullOrEmpty(dateTakenText))
+                        {
+                            DateTime dateTaken;
+                            if (DateTime.TryParseExact(dateTakenText, "yyyy:MM:dd HH:mm:ss",
+                                CultureInfo.CurrentCulture, DateTimeStyles.None, out dateTaken))
+                            {
+                                // write to grid
+                                DataRow imageEntry = dataTable.NewRow();
+                                imageEntry["Elternordner"] = sourcePathName;
+                                imageEntry["Dateiname"] = imageFile;
+                                imageEntry["Aufnahmedatum"] = dateTaken;
+                                imageEntry["Zielordner"] = Path.Combine(targetPathName, dateTaken.Date.ToString("yyyy-MM-dd"));
+                                dataTable.Rows.Add(imageEntry);
+                                image.Dispose();
+
+                                //progressBarVerarbeitung.PerformStep();
+                                // report progress via backgroundworker
+                                float percentageFinished = ((float)dataTable.Rows.Count / (float)imagesFromFolders.Count) * 100;
+
+                                // Do performance measure for populating dataTable
+                                var elapsedTimeSinceStart = watch.Elapsed;
+                                var timePerPicture = (elapsedTimeSinceStart.TotalMilliseconds / 1000) / dataTable.Rows.Count;
+                                var timeRemaining = Math.Round(timePerPicture * (imagesFromFolders.Count - dataTable.Rows.Count), 0);
+
+                                backgroundWorkerGetImages.ReportProgress(Convert.ToInt32(percentageFinished), new { timeRemaining });
+
+                                //if ((dataTable.Rows.Count % 5) == 0)
+                                //{
+                                //    //labelAnzahl.Text = $"Anzahl verarbeiteter Bilder: {dataTable.Rows.Count} von {imageFiles.Length} - geschätzte verbleibende Zeit: {Math.Round(timeRemaining, 0)}";
+                                //    //Refresh();
+                                //}
+                            }
+                        }
+                    }
+                }
+
+                // sort DataTable based on Aufnahmedatum
+                dataTable.DefaultView.Sort = "Aufnahmedatum";
+
+                return dataTable;
+
+                ////// Iterate dataSource for treeview
+                //treeViewImages.Nodes.Clear();
+                //foreach (DataRow row in dataTable.Rows)
+                //{
+                //    // Add top level element
+                //    if (!treeViewImages.Nodes.ContainsKey(row["Zielordner"].ToString()))
+                //    {
+                //        TreeNode currentNode = new TreeNode();
+                //        currentNode.Name = row["Zielordner"].ToString();
+                //        currentNode.Text = row["Zielordner"].ToString();
+                //        treeViewImages.Nodes.Add(currentNode);
+                //    }
+
+                //    // add current image as child
+                //    TreeNode childNode = new TreeNode();
+                //    childNode.Name = row["Dateiname"].ToString();
+                //    childNode.Text = row["Dateiname"].ToString();
+
+                //    // tags for properties needed in datagridview
+                //    ImageEntryObject imageEntryObject = new ImageEntryObject(row["Aufnahmedatum"].ToString(),
+                //        row["Dateiname"].ToString(),
+                //        row["Elternordner"].ToString(), "", "");
+                //    childNode.Tag = imageEntryObject;
+
+                //    treeViewImages.Nodes[row["Zielordner"].ToString()].Nodes.Add(childNode);
+
+                //    labelStatusTreeview.Text = $"{treeViewImages.Nodes.Count} Aufnahmedaten mit {dataTable.Rows.Count} Bildern";
+                //}
+            }
+            else
+            {
+                MessageBox.Show($"No files to process found in {sourcePathName}");
+                button1.Enabled = true;
+                throw new Exception($"No files to process found in {sourcePathName}", new Exception());
+            }
+
+            watch.Stop();
+            var elapsedMs = watch.ElapsedMilliseconds;
+            labelBenoetigteZeit.Text = $"Benötigte Zeit: {(elapsedMs / 1000).ToString()}s";
+            labelBenoetigteZeit.Visible = true;
+            // dataGridView1.DataSource = dataTable;
+            treeViewImages.CheckBoxes = true;
+            button1.Enabled = true;
+        }
+
+        /// <summary>
+        /// Serialize TreeNode incl. Tags recursively
+        /// </summary>
+        /// <param name="node"></param>
+        /// <returns></returns>
+        private string serializeTreeNodeInclTags( TreeNode node, int level, TextWriter writer)
+        {
+            string xmlSerialization = "";
+
+            // tags for level and node properties
+            string tabsForLevel = new string(Convert.ToChar("\t"), level);
+            string tabsForProperties = new string(Convert.ToChar("\t"), level + 1);
+            string tabsForTags = new string(Convert.ToChar("\t"), level + 2);
+
+            if (node.Nodes.Count > 0)
+            {
+                // serialize node incl. Tags
+                ImageEntryObject imageEntry = node.Tag as ImageEntryObject;
+
+                //xmlSerialization += $"{tabsForLevel}<Node>\n{tabsForProperties}<Name>{node.Name}</Name>\n{tabsForProperties}<Text>{node.Text}</Text>\n{tabsForProperties}<Tag>\n{tabsForTags}<Aufnamedatum>{imageEntry?.Aufnahmedatum}</Aufnahmedatum>\n{tabsForTags}<Dateiname>{imageEntry?.Dateiname}</Dateiname>\n{tabsForTags}<Elternordner>{imageEntry?.Elternordner}>/Elternordner>\n{tabsForProperties}</Tag>\n{tabsForProperties}<Nodes>\n";
+                writer.Write($"{tabsForLevel}<Node>\n{tabsForProperties}<Name>{node.Name}</Name>\n{tabsForProperties}<Text>{node.Text}</Text>\n{tabsForProperties}<Tag>\n{tabsForTags}<Aufnahmedatum>{imageEntry?.Aufnahmedatum}</Aufnahmedatum>\n{tabsForTags}<Dateiname>{imageEntry?.Dateiname}</Dateiname>\n{tabsForTags}<Elternordner>{imageEntry?.Elternordner}</Elternordner>\n{tabsForProperties}</Tag>\n{tabsForProperties}<Nodes>\n");
+                // iterate child nodes
+                foreach (TreeNode childNode in node.Nodes)
+                {
+                    //xmlSerialization += serializeTreeNodeInclTags(childNode, level + 2);
+                    serializeTreeNodeInclTags(childNode, level + 2, writer);
+                }
+                //xmlSerialization += $"{tabsForProperties}</Nodes>\n{tabsForLevel}</Node>\n";
+                writer.Write($"{tabsForProperties}</Nodes>\n{tabsForLevel}</Node>\n");
+            }
+            else
+            {
+                // serialize node incl. tags without children
+                ImageEntryObject imageEntry = node.Tag as ImageEntryObject;
+                //xmlSerialization += $"{tabsForLevel}<Node>\n{tabsForProperties}<Name>{node.Name}</Name>\n{tabsForProperties}<Text>{node.Text}</Text>\n{tabsForProperties}<Tag>\n{tabsForTags}<Aufnamedatum>{imageEntry?.Aufnahmedatum}</Aufnahmedatum>\n{tabsForTags}<Dateiname>{imageEntry?.Dateiname}</Dateiname>\n{tabsForTags}<Elternordner>{imageEntry?.Elternordner}>/Elternordner>\n{tabsForProperties}</Tag>\n{tabsForProperties}<Nodes>\n{tabsForProperties}</Nodes>\n{tabsForLevel}</Node>\n";
+                writer.Write($"{tabsForLevel}<Node>\n{tabsForProperties}<Name>{node.Name}</Name>\n{tabsForProperties}<Text>{node.Text}</Text>\n{tabsForProperties}<Tag>\n{tabsForTags}<Aufnahmedatum>{imageEntry?.Aufnahmedatum}</Aufnahmedatum>\n{tabsForTags}<Dateiname>{imageEntry?.Dateiname}</Dateiname>\n{tabsForTags}<Elternordner>{imageEntry?.Elternordner}</Elternordner>\n{tabsForProperties}</Tag>\n{tabsForProperties}<Nodes>\n{tabsForProperties}</Nodes>\n{tabsForLevel}</Node>\n");
+
+            }
+            return xmlSerialization;
+        }
+
+
+        private void populateTreeViewByDataTable(DataTable dataTable)
+        {
+
+            treeViewImages.Nodes.Clear();
+            //DataTable dataTable = treeviewDataTable;
+            foreach (DataRow row in dataTable.Rows)
+            {
+                // Add top level element
+                if (!treeViewImages.Nodes.ContainsKey(row["Zielordner"].ToString()))
+                {
+                    TreeNode currentNode = new TreeNode();
+                    currentNode.Name = row["Zielordner"].ToString();
+                    currentNode.Text = row["Zielordner"].ToString();
+                    treeViewImages.Nodes.Add(currentNode);
+                }
+
+                // add current image as child
+                TreeNode childNode = new TreeNode();
+                childNode.Name = row["Dateiname"].ToString();
+                childNode.Text = row["Dateiname"].ToString();
+
+                // tags for properties needed in datagridview
+                ImageEntryObject imageEntryObject = new ImageEntryObject(row["Aufnahmedatum"].ToString(),
+                    row["Dateiname"].ToString(),
+                    row["Elternordner"].ToString(), "", "");
+                childNode.Tag = imageEntryObject;
+
+                treeViewImages.Nodes[row["Zielordner"].ToString()].Nodes.Add(childNode);
+
+                labelStatusTreeview.Text = $"{treeViewImages.Nodes.Count} Aufnahmedaten mit {dataTable.Rows.Count} Bildern";
+            }
+            treeViewImages.Sort();
+        }
+
+        #endregion
+
+        #region Backgroundworker
+
+        private void backgroundWorkerGetImages_DoWork(object sender, DoWorkEventArgs e)
+        {
+            BackgroundWorker worker = sender as BackgroundWorker;
+
+            e.Result = getImages();
+        }
+
+        // This event handler deals with the results of the
+        // background operation.
+        private void backgroundWorkerGetImages_RunWorkerCompleted(
+            object sender, RunWorkerCompletedEventArgs e)
+        {
+            // save currentDataTable to global variable - TEMPORARY WORKAROUND
+            treeviewDataTable = e.Result as DataTable;
+
+            // populate TreeView
+            populateTreeViewByDataTable(treeviewDataTable);
+
+            //// Iterate dataSource for treeview
+
+            button1.Enabled = true;
+        }
+
+        // This event handler updates the progress bar.
+        private void backgroundWorkerGetImages_ProgressChanged(object sender,
+            ProgressChangedEventArgs e)
+        {
+            var test = e.UserState;
+            progressBarVerarbeitung.Value = e.ProgressPercentage;
+            labelBenoetigteZeit.Text = $"Benötigte Zeit: {test}s";
+            labelBenoetigteZeit.Visible = true;
+        }
+
+        // Set up the BackgroundWorker object by 
+        // attaching event handlers. 
+        private void InitializeBackgroundWorker()
+        {
+
+            backgroundWorkerGetImages.DoWork +=
+                new DoWorkEventHandler(backgroundWorkerGetImages_DoWork);
+            backgroundWorkerGetImages.RunWorkerCompleted +=
+                new RunWorkerCompletedEventHandler(
+            backgroundWorkerGetImages_RunWorkerCompleted);
+            backgroundWorkerGetImages.ProgressChanged +=
+                new ProgressChangedEventHandler(
+            backgroundWorkerGetImages_ProgressChanged);
+        }
+        #endregion
     }
 }

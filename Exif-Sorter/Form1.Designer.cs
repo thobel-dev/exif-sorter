@@ -46,6 +46,8 @@
             menuStrip1 = new MenuStrip();
             dateiToolStripMenuItem = new ToolStripMenuItem();
             ordnerÖffnenToolStripMenuItem = new ToolStripMenuItem();
+            treeviewSpeichernToolStripMenuItem = new ToolStripMenuItem();
+            treeviewLadenToolStripMenuItem = new ToolStripMenuItem();
             labelSourcePathName = new Label();
             buttonDeleteSelection = new Button();
             textBoxZielordnername = new TextBox();
@@ -56,6 +58,9 @@
             labelStatusleisteBildVorschau = new Label();
             labelStatusleisteDataGridView = new Label();
             buttonMove = new Button();
+            backgroundWorkerGetImages = new System.ComponentModel.BackgroundWorker();
+            openFileDialogTreeviewState = new OpenFileDialog();
+            saveFileDialogTreeviewState = new SaveFileDialog();
             ((System.ComponentModel.ISupportInitialize)dataGridView1).BeginInit();
             dataGridViewMenu.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)pictureBox1).BeginInit();
@@ -106,7 +111,7 @@
             button1.TabIndex = 1;
             button1.Text = "Aktualisieren";
             button1.UseVisualStyleBackColor = true;
-            button1.Click += button1_Click;
+            button1.Click += buttonRefreshImages_Click;
             // 
             // labelBenoetigteZeit
             // 
@@ -141,7 +146,6 @@
             // treeViewImages
             // 
             treeViewImages.AllowDrop = true;
-            treeViewImages.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
             treeViewImages.CheckBoxes = true;
             treeViewImages.FullRowSelect = true;
             treeViewImages.Location = new Point(18, 81);
@@ -195,7 +199,7 @@
             // 
             // dateiToolStripMenuItem
             // 
-            dateiToolStripMenuItem.DropDownItems.AddRange(new ToolStripItem[] { ordnerÖffnenToolStripMenuItem });
+            dateiToolStripMenuItem.DropDownItems.AddRange(new ToolStripItem[] { ordnerÖffnenToolStripMenuItem, treeviewSpeichernToolStripMenuItem, treeviewLadenToolStripMenuItem });
             dateiToolStripMenuItem.Name = "dateiToolStripMenuItem";
             dateiToolStripMenuItem.Size = new Size(46, 22);
             dateiToolStripMenuItem.Text = "Datei";
@@ -203,10 +207,26 @@
             // ordnerÖffnenToolStripMenuItem
             // 
             ordnerÖffnenToolStripMenuItem.Name = "ordnerÖffnenToolStripMenuItem";
-            ordnerÖffnenToolStripMenuItem.Size = new Size(149, 22);
+            ordnerÖffnenToolStripMenuItem.Size = new Size(158, 22);
             ordnerÖffnenToolStripMenuItem.Text = "Ordner öffnen";
             ordnerÖffnenToolStripMenuItem.ToolTipText = "Quellordner öffnen";
-            ordnerÖffnenToolStripMenuItem.Click += ordnerÖffnenToolStripMenuItem_Click;
+            ordnerÖffnenToolStripMenuItem.Click += ordnerOeffnenToolStripMenuItem_Click;
+            // 
+            // treeviewSpeichernToolStripMenuItem
+            // 
+            treeviewSpeichernToolStripMenuItem.Name = "treeviewSpeichernToolStripMenuItem";
+            treeviewSpeichernToolStripMenuItem.Size = new Size(158, 22);
+            treeviewSpeichernToolStripMenuItem.Text = "Bilder speichern";
+            treeviewSpeichernToolStripMenuItem.ToolTipText = "Geladene Bilder speichern";
+            treeviewSpeichernToolStripMenuItem.Click += treeviewSpeichernToolStripMenuItem_Click;
+            // 
+            // treeviewLadenToolStripMenuItem
+            // 
+            treeviewLadenToolStripMenuItem.Name = "treeviewLadenToolStripMenuItem";
+            treeviewLadenToolStripMenuItem.Size = new Size(158, 22);
+            treeviewLadenToolStripMenuItem.Text = "Bilder laden";
+            treeviewLadenToolStripMenuItem.ToolTipText = "Gespeicherte Bilder laden";
+            treeviewLadenToolStripMenuItem.Click += treeviewLadenToolStripMenuItem_Click;
             // 
             // labelSourcePathName
             // 
@@ -253,7 +273,7 @@
             // buttonZielordnername
             // 
             buttonZielordnername.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            buttonZielordnername.Location = new Point(1556, 422);
+            buttonZielordnername.Location = new Point(1556, 420);
             buttonZielordnername.Margin = new Padding(2);
             buttonZielordnername.Name = "buttonZielordnername";
             buttonZielordnername.Size = new Size(31, 20);
@@ -274,16 +294,18 @@
             // 
             // labelStatusTreeview
             // 
+            labelStatusTreeview.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             labelStatusTreeview.AutoSize = true;
             labelStatusTreeview.Location = new Point(18, 419);
             labelStatusTreeview.Margin = new Padding(2, 0, 2, 0);
             labelStatusTreeview.Name = "labelStatusTreeview";
-            labelStatusTreeview.Size = new Size(0, 15);
+            labelStatusTreeview.Size = new Size(114, 15);
             labelStatusTreeview.TabIndex = 16;
+            labelStatusTreeview.Text = "Keine Bilder geladen";
             // 
             // labelStatusleisteBildVorschau
             // 
-            labelStatusleisteBildVorschau.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            labelStatusleisteBildVorschau.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
             labelStatusleisteBildVorschau.AutoSize = true;
             labelStatusleisteBildVorschau.Location = new Point(18, 738);
             labelStatusleisteBildVorschau.Name = "labelStatusleisteBildVorschau";
@@ -293,7 +315,7 @@
             // 
             // labelStatusleisteDataGridView
             // 
-            labelStatusleisteDataGridView.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            labelStatusleisteDataGridView.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
             labelStatusleisteDataGridView.AutoSize = true;
             labelStatusleisteDataGridView.Location = new Point(1078, 738);
             labelStatusleisteDataGridView.Name = "labelStatusleisteDataGridView";
@@ -303,6 +325,7 @@
             // 
             // buttonMove
             // 
+            buttonMove.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             buttonMove.Location = new Point(1592, 419);
             buttonMove.Name = "buttonMove";
             buttonMove.Size = new Size(86, 23);
@@ -310,6 +333,10 @@
             buttonMove.Text = "Verschieben";
             buttonMove.UseVisualStyleBackColor = true;
             buttonMove.Click += buttonMove_Click;
+            // 
+            // openFileDialogTreeviewState
+            // 
+            openFileDialogTreeviewState.FileName = "openFileDialogTreeviewState";
             // 
             // Form1
             // 
@@ -364,6 +391,8 @@
         private MenuStrip menuStrip1;
         private ToolStripMenuItem dateiToolStripMenuItem;
         private ToolStripMenuItem ordnerÖffnenToolStripMenuItem;
+        private ToolStripMenuItem treeviewSpeichernToolStripMenuItem;
+        private ToolStripMenuItem treeviewLadenToolStripMenuItem;
         private Label labelSourcePathName;
         private Button buttonDeleteSelection;
         private ContextMenuStrip dataGridViewMenu;
@@ -377,5 +406,8 @@
         private Label labelStatusleisteBildVorschau;
         private Label labelStatusleisteDataGridView;
         private Button buttonMove;
+        private System.ComponentModel.BackgroundWorker backgroundWorkerGetImages;
+        private OpenFileDialog openFileDialogTreeviewState;
+        private SaveFileDialog saveFileDialogTreeviewState;
     }
 }
