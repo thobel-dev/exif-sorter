@@ -1,6 +1,6 @@
 ﻿namespace Exif_Sorter
 {
-    partial class Form1
+    partial class MainForm
     {
         /// <summary>
         ///  Required designer variable.
@@ -29,7 +29,7 @@
         private void InitializeComponent()
         {
             components = new System.ComponentModel.Container();
-            System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(Form1));
+            System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(MainForm));
             dataGridView1 = new DataGridView();
             dataGridViewMenu = new ContextMenuStrip(components);
             menuRemoveImage = new ToolStripMenuItem();

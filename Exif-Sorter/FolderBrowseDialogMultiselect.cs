@@ -14,7 +14,7 @@ namespace Exif_Sorter
     {
         private string _folder = "";
         internal List<string> _folders = new List<string>();
-        public FolderBrowseDialogMultiselect(string sourceFolder)
+        public FolderBrowseDialogMultiselect(string sourceFolder, List<string> openFolders)
         {
             InitializeComponent();
             //string pathNameFromMain = _folder;
@@ -26,6 +26,7 @@ namespace Exif_Sorter
                 TreeNode newFolderNode = new TreeNode();
                 newFolderNode.Text = folder;
                 newFolderNode.Name = folder;
+                newFolderNode.Checked = openFolders != null && openFolders.Contains(folder);
                 treeViewFolderSelect.Nodes.Add(newFolderNode);
             }
         }

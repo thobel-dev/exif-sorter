@@ -11,7 +11,7 @@ using Exif_Sorter.Models;
 
 namespace Exif_Sorter
 {
-    public partial class Form1 : Form
+    public partial class MainForm : Form
     {
         // source folder of images
         string sourcePathName = @"Z:\Bilder\S9\";
@@ -22,10 +22,13 @@ namespace Exif_Sorter
         // global dataTable with current state of treeview
         DataTable treeviewDataTable = new DataTable();
 
+        // global DataTable for duplicates
+        DataTable duplicateImages = new DataTable();
+
         // list of opened folders
         List<string> _openFolders;
 
-        public Form1()
+        public MainForm()
         {
             InitializeComponent();
             InitializeBackgroundWorker();
@@ -34,6 +37,14 @@ namespace Exif_Sorter
             // Backgroundworker process for loading images
             backgroundWorkerGetImages.WorkerReportsProgress = true;
             backgroundWorkerGetImages.WorkerSupportsCancellation = true;
+
+            // set primary key for global dataTable
+            //treeviewDataTable.Columns.Add("Elternordner");
+            //treeviewDataTable.Columns.Add("Dateiname");
+            //treeviewDataTable.Columns.Add("Aufnahmedatum");
+            //treeviewDataTable.Columns.Add("Zielordner");
+            //treeviewDataTable.Columns.Add("NeuerZielordner");
+            //treeviewDataTable.PrimaryKey = new DataColumn[] { treeviewDataTable.Columns["Dateiname"] };
 
         }
 
@@ -233,6 +244,8 @@ namespace Exif_Sorter
                     dataTable.Columns.Add("Aufnahmedatum");
                     dataTable.Columns.Add("Zielordner");
                     dataTable.Columns.Add("NeuerZielordner");
+                    dataTable.Columns.Add("Dateigroesse");
+                    dataTable.Columns.Add("OnlyFilename");
                     dataTable.PrimaryKey = new DataColumn[] { dataTable.Columns["Dateiname"] };
                     textBoxZielordnername.Text = $"{e.Node.Name}";
 
@@ -251,6 +264,8 @@ namespace Exif_Sorter
                     currentRowItem["Aufnahmedatum"] = imageEntry.Aufnahmedatum.Substring(0, 10);
                     currentRowItem["Elternordner"] = imageEntry.Elternordner;
                     currentRowItem["NeuerZielordner"] = textBoxZielordnername.Text;
+                    currentRowItem["Dateigroesse"] = imageEntry.Dateigroesse;
+                    currentRowItem["OnlyFilename"] = imageEntry.OnlyFilename;
 
                     if (!dataTable.Rows.Contains(node.Name))
                     {
@@ -365,7 +380,7 @@ namespace Exif_Sorter
 
             ////labelSourcePathName.Text = sourcePathName;
             ///
-            FolderBrowseDialogMultiselect folderBrowseDialogMultiselect = new FolderBrowseDialogMultiselect(sourcePathName);
+            FolderBrowseDialogMultiselect folderBrowseDialogMultiselect = new FolderBrowseDialogMultiselect(sourcePathName, _openFolders);
             // folderBrowseDialogMultiselect.setFolder(sourcePathName);
             folderBrowseDialogMultiselect.ShowDialog();
             _openFolders = folderBrowseDialogMultiselect._folders;
@@ -592,10 +607,14 @@ namespace Exif_Sorter
                 }
 
                 // Delete all childnodes that have been copied
+                // also delete from global DataTable
                 foreach (var node in nodesToBeDeletedAfterCopy)
                 {
                     node.Remove();
+                    DataRow rowToRemove = treeviewDataTable.Rows.Find(node.Name);
+                    treeviewDataTable.Rows.Remove(rowToRemove);
                 }
+                treeviewDataTable.AcceptChanges();
 
                 // delete all nodes without children - nodes should not be deleted in iteration
                 // because it messes up the index and nodes get skipped
@@ -652,7 +671,15 @@ namespace Exif_Sorter
             dataTable.Columns.Add("Zielordner");
             dataTable.Columns.Add("ZielordnerName");
             dataTable.Columns.Add("NeuerZielordner");
+            dataTable.Columns.Add("Dateigroesse");
+            dataTable.Columns.Add("OnlyFilename");
 
+            foreach (DataColumn col in dataTable.Columns)
+            {
+                DataColumn newCol = new DataColumn();
+                newCol.ColumnName = col.ColumnName;
+                duplicateImages.Columns.Add(newCol);
+            }
             // Put images into treeview - order
             //TreeNode topNode = new TreeNode(sourcePathName);
             //List<TreeNode> lstAufnahmedatum = new List<TreeNode>();
@@ -696,6 +723,17 @@ namespace Exif_Sorter
                     //FileInfo fileInfo = new FileInfo(imageFile);
                     if (imageFile.ToLower().EndsWith(".jpg") || imageFile.ToLower().EndsWith(".jpeg"))
                     {
+                        // check if current image already exists in global dataTable
+                        FileInfo fileInfo = new FileInfo(imageFile);
+                        
+                        //if (fileExists != null)
+                        //{
+                        //    // add detailed information to duplicate list
+                        //    duplicateImages.Rows.Add(fileExists);
+                        //    duplicateImages.Rows.Add();
+                        //}
+                        //else
+                        //{
                         Image image = Image.FromFile(imageFile);
                         PropertyItem propertyItem = image.GetPropertyItem(imageIndex);
                         string dateTakenText = enc.GetString(propertyItem.Value, 0, propertyItem.Len - 1);
@@ -705,13 +743,16 @@ namespace Exif_Sorter
                             if (DateTime.TryParseExact(dateTakenText, "yyyy:MM:dd HH:mm:ss",
                                 CultureInfo.CurrentCulture, DateTimeStyles.None, out dateTaken))
                             {
+
                                 // write to grid
                                 DataRow imageEntry = dataTable.NewRow();
                                 imageEntry["Elternordner"] = sourcePathName;
                                 imageEntry["Dateiname"] = imageFile;
                                 imageEntry["Aufnahmedatum"] = dateTaken;
                                 imageEntry["Zielordner"] = Path.Combine(targetPathName, dateTaken.Date.ToString("yyyy-MM-dd"));
-                                dataTable.Rows.Add(imageEntry);
+                                imageEntry["Dateigroesse"] = fileInfo.Length;
+                                imageEntry["OnlyFilename"] = Path.GetFileName(imageFile);
+                                
                                 image.Dispose();
 
                                 //progressBarVerarbeitung.PerformStep();
@@ -730,8 +771,24 @@ namespace Exif_Sorter
                                 //    //labelAnzahl.Text = $"Anzahl verarbeiteter Bilder: {dataTable.Rows.Count} von {imageFiles.Length} - geschätzte verbleibende Zeit: {Math.Round(timeRemaining, 0)}";
                                 //    //Refresh();
                                 //}
+
+                                // check if image already exists
+                                var fileExists = dataTable.AsEnumerable().Where(x => x.Field<string>("OnlyFilename") == Path.GetFileName(imageFile) &&
+                                                                                     x.Field<string>("Dateigroesse") == fileInfo.Length.ToString()).SingleOrDefault();
+                                if (fileExists != null)
+                                {
+                                    // mark duplicates
+                                    duplicateImages.Rows.Add(imageEntry.ItemArray);
+                                    duplicateImages.Rows.Add(fileExists.ItemArray);
+                                }
+                                else
+                                {
+                                    // normally add to images
+                                    dataTable.Rows.Add(imageEntry.ItemArray);
+                                }
                             }
                         }
+                        //}
                     }
                 }
 
@@ -851,7 +908,11 @@ namespace Exif_Sorter
                 // tags for properties needed in datagridview
                 ImageEntryObject imageEntryObject = new ImageEntryObject(row["Aufnahmedatum"].ToString(),
                     row["Dateiname"].ToString(),
-                    row["Elternordner"].ToString(), "", "");
+                    row["Elternordner"].ToString(),
+                    "",
+                    "",
+                    (long)Convert.ToDouble(row["Dateigroesse"].ToString()),
+                    row["OnlyFilename"].ToString());
                 childNode.Tag = imageEntryObject;
 
                 treeViewImages.Nodes[row["Zielordner"].ToString()].Nodes.Add(childNode);
@@ -879,7 +940,7 @@ namespace Exif_Sorter
         {
             // save currentDataTable to global variable - TEMPORARY WORKAROUND
             treeviewDataTable = e.Result as DataTable;
-
+            treeviewDataTable.PrimaryKey = new DataColumn[] { treeviewDataTable.Columns["Dateiname"] };
             // populate TreeView
             populateTreeViewByDataTable(treeviewDataTable);
 
